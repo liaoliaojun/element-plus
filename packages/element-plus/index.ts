@@ -11,6 +11,7 @@ import ElProgress from '@element-plus/progress'
 import ElBreadcrumb from '@element-plus/breadcrumb'
 import ElIcon from '@element-plus/icon'
 import ElLink from '@element-plus/link'
+import ElSwitch from '@element-plus/switch'
 
 export {
   ElAvatar,
@@ -25,6 +26,7 @@ export {
   ElBreadcrumb,
   ElIcon,
   ElLink,
+  ElSwitch,
 }
 
 export default function install(app: App): void {
@@ -40,4 +42,5 @@ export default function install(app: App): void {
   ElBreadcrumb(app)
   ElIcon(app)
   ElLink(app)
+  ElSwitch(app)
 }
