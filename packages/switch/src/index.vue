@@ -23,8 +23,8 @@
       v-if="inactiveIconClass || inactiveText"
       :class="['el-switch__label', 'el-switch__label--left', !checked ? 'is-active' : '']"
     >
-      <i v-if="inactiveIconClass" :class="[inactiveIconClass]"></i>
-      <span v-if="!inactiveIconClass && inactiveText" :aria-hidden="checked">{{ inactiveText }}</span>
+      <i v-if="inactiveIconClass" :class="inactiveIconClass"></i>
+      <span v-else :aria-hidden="checked">{{ inactiveText }}</span>
     </span>
     <span ref="core" class="el-switch__core" :style="{ 'width': coreWidth + 'px' }">
     </span>
@@ -32,8 +32,8 @@
       v-if="activeIconClass || activeText"
       :class="['el-switch__label', 'el-switch__label--right', checked ? 'is-active' : '']"
     >
-      <i v-if="activeIconClass" :class="[activeIconClass]"></i>
-      <span v-if="!activeIconClass && activeText" :aria-hidden="!checked">{{ activeText }}</span>
+      <i v-if="activeIconClass" :class="activeIconClass"></i>
+      <span v-else :aria-hidden="!checked">{{ activeText }}</span>
     </span>
   </div>
 </template>
@@ -130,7 +130,7 @@ export default defineComponent({
     },
   },
   emits: ['update:modelValue', 'change', 'input'],
-  setup(props: ISwitchProps, ctx) {
+  setup(props: ISwitchProps, { emit }) {
     const elForm = inject<ElForm>('elForm')
     const coreWidth = ref(props.width)
     const isModelValue = ref(props.modelValue !== false)
@@ -154,9 +154,9 @@ export default defineComponent({
     })
 
     if (!~[props.activeValue, props.inactiveValue].indexOf(actualValue.value)) {
-      ctx.emit('update:modelValue', props.inactiveValue)
-      ctx.emit('change', props.inactiveValue)
-      ctx.emit('input', props.inactiveValue)
+      emit('update:modelValue', props.inactiveValue)
+      emit('change', props.inactiveValue)
+      emit('input', props.inactiveValue)
     }
 
     watch(checked, () => {
@@ -178,9 +178,9 @@ export default defineComponent({
 
     const handleChange = (): void => {
       const val = checked.value ? props.inactiveValue : props.activeValue
-      ctx.emit('update:modelValue', val)
-      ctx.emit('change', val)
-      ctx.emit('input', val)
+      emit('update:modelValue', val)
+      emit('change', val)
+      emit('input', val)
       nextTick(() => {
         input.value.checked = checked.value
       })
