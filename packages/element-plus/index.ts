@@ -15,6 +15,7 @@ import ElRate from '@element-plus/rate'
 import ElSwitch from '@element-plus/switch'
 import ElContainer from '@element-plus/container'
 import ElNotification from '@element-plus/notification'
+import ElTooltip from '@element-plus/tooltip'
 
 export {
   ElAvatar,
@@ -25,6 +26,7 @@ export {
   ElDivider,
   ElTag,
   ElTimeline,
+  ElTooltip,
   ElProgress,
   ElBreadcrumb,
   ElIcon,
@@ -44,6 +46,7 @@ export default function install(app: App): void {
   ElLayout(app)
   ElDivider(app)
   ElTimeline(app)
+  ElTooltip(app)
   ElProgress(app)
   ElBreadcrumb(app)
   ElIcon(app)

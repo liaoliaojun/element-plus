@@ -4,8 +4,9 @@
   </div>
 </template>
 <script lang='ts'>
-import { defineComponent, ref, h } from 'vue'
-import Popper from '@popperjs/core'
+import { defineComponent, h, toRefs, ref, reactive } from 'vue'
+import type { PropType } from 'vue'
+import usePopper from '@element-plus/popper'
 import isServer from '@element-plus/utils/isServer'
 import { addClass, removeClass, on, off } from '@element-plus/utils/dom'
 import { generateId } from '@element-plus/utils/util'
@@ -71,9 +72,40 @@ export default defineComponent({
       type: Number,
       default: 0,
     },
+    transformOrigin: {
+      type: [Boolean, String],
+      default: true,
+    },
+    placement: {
+      type: String,
+      default: 'bottom',
+    },
+    boundariesPadding: {
+      type: Number,
+      default: 5,
+    },
+    reference: {
+      type: Object as PropType<Nullable<HTMLElement>>,
+      default: () => null,
+    },
+    popper: {
+      type: Object as PropType<Nullable<HTMLElement>>,
+      default: () => null,
+    },
+    offset: {
+      type: Number,
+      default: 0,
+    },
+    value: {
+      type: Boolean,
+      default: false,
+    },
+    appendToBody: {
+      type: Boolean,
+      default: true,
+    },
   },
-  setup(props) {
-
+  setup(props, ctx) {
     if (isServer) return null
 
     // this.popperVM = new Vue({
@@ -84,39 +116,20 @@ export default defineComponent({
     //     return this.node
     //   },
     // }).$mount()
-    const tooltipId = ref(`el-tooltip-${generateId()}`)
-    const timeoutPending = ref(null)
-    const focusing = ref(false)
-    const timeout = ref(null)
-    const expectedState = ref(false)
-
-    const doDestroy = () => {
-    }
-
-    const handleClosePopper = () => {
-      if (props.enterable && expectedState || props.manual) return
-      clearTimeout(timeout)
-
-      if (timeoutPending.value) {
-        clearTimeout(timeoutPending.value)
-      }
-      this.showPopper = false
-
-      if (props.disabled) {
-        doDestroy()
-      }
-    }
-    const debounceClose = debounce(() => handleClosePopper(), 200)
+    const popper = usePopper(props, ctx)
     // init here
-    return {
-      debounceClose,
-      doDestroy,
-      expectedState,
-      focusing,
-      tooltipId,
-      timeoutPending,
-      timeout,
-    }
+    return toRefs(
+      reactive({
+        expectedState: false,
+        focusing: false,
+        timeoutPending: null,
+        timeout: null,
+        tooltipId: `el-tooltip-${generateId()}`,
+      }),
+    )
+  },
+  mounted() {
+    console.log(this.referenceElm)
   },
   methods: {
     show() {
@@ -163,7 +176,7 @@ export default defineComponent({
     },
 
     handleClosePopper() {
-      if (this.enterable && this.expectedState || this.manual) return
+      if ((this.enterable && this.expectedState) || this.manual) return
       clearTimeout(this.timeout)
 
       if (this.timeoutPending) {
