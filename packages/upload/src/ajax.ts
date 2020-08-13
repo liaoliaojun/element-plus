@@ -1,27 +1,11 @@
-interface EnhancedError extends Error {
-  status: number
-  method: string
-  url: string
-}
+import type {
+  ElUploadProgressEvent,
+  ElUploadRequestOptions,
+  ElUploadAjaxError,
+} from './upload'
 
-interface EnhancedProgressEvent extends ProgressEvent {
-  percent: number
-}
-
-interface RequestOptions {
-  action: string
-  data: Record<string, string | Blob>
-  filename: string
-  file: File
-  headers: Headers
-  onError: (e: Error) => void
-  onProgress: (e: ProgressEvent) => void
-  onSuccess: (response: XMLHttpRequestResponseType) => unknown
-  withCredentials: boolean
-}
-
-function getError(action: string, option: RequestOptions, xhr: XMLHttpRequest) {
-  let msg
+function getError(action: string, option: ElUploadRequestOptions, xhr: XMLHttpRequest) {
+  let msg: string
   if (xhr.response) {
     msg = `${xhr.response.error || xhr.response}`
   } else if (xhr.responseText) {
@@ -30,7 +14,7 @@ function getError(action: string, option: RequestOptions, xhr: XMLHttpRequest) {
     msg = `fail to post ${action} ${xhr.status}`
   }
 
-  const err = new Error(msg) as EnhancedError
+  const err = new Error(msg) as ElUploadAjaxError
   err.status = xhr.status
   err.method = 'post'
   err.url = action
@@ -50,7 +34,7 @@ function getBody(xhr: XMLHttpRequest): XMLHttpRequestResponseType {
   }
 }
 
-export default function upload(option: RequestOptions) {
+export default function upload(option: ElUploadRequestOptions) {
   if (typeof XMLHttpRequest === 'undefined') {
     return
   }
@@ -61,7 +45,7 @@ export default function upload(option: RequestOptions) {
   if (xhr.upload) {
     xhr.upload.onprogress = function progress(e) {
       if (e.total > 0) {
-        (e as EnhancedProgressEvent).percent = e.loaded / e.total * 100
+        (e as ElUploadProgressEvent).percent = e.loaded / e.total * 100
       }
       option.onProgress(e)
     }
@@ -77,7 +61,7 @@ export default function upload(option: RequestOptions) {
 
   formData.append(option.filename, option.file, option.file.name)
 
-  xhr.onerror = function error(e) {
+  xhr.onerror = function error() {
     option.onError(getError(action, option, xhr))
   }
 

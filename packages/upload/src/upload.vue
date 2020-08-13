@@ -14,23 +14,31 @@
       <slot></slot>
     </template>
     <input
-      ref="input"
+      ref="inputRef"
       class="el-upload__input"
       type="file"
       :name="name"
       :multiple="multiple"
       :accept="accept"
       @change="handleChange"
-    ></input>
+    >
   </div>
 </template>
 
 <script lang="tsx">
 import { defineComponent, inject, ref } from 'vue'
-import { noop } from 'lodash-es'
-import type { PropType } from 'vue'
+import { NOOP } from '@vue/shared'
+import { eventKeys } from '@element-plus/utils/aria'
+
 import ajax from './ajax'
 import UploadDragger from './upload-dragger.vue'
+
+import type { PropType } from 'vue'
+import type { ListType, ElUpload, UploadFile, ElFile } from './upload'
+
+type IFileHanlder = (file: Nullable<ElFile[]>, fileList?: UploadFile[]) => unknown
+type AjaxEventListener = (e: ProgressEvent, file: ElFile) => unknown
+
 export default defineComponent({
   components: {
     UploadDragger,
@@ -70,49 +78,52 @@ export default defineComponent({
       default: '',
     },
     onStart: {
-      type: Function,
-      default: noop,
+      type: Function as PropType<(file: File) => void>,
+      default: () => NOOP as (file: File) => void,
     },
     onProgress: {
-      type: Function,
-      default: noop,
+      type: Function as PropType<AjaxEventListener>,
+      default: () => NOOP as AjaxEventListener,
     },
     onSuccess: {
-      type: Function,
-      default: noop,
+      type: Function as PropType<AjaxEventListener>,
+      default: () => NOOP as AjaxEventListener,
     },
     onError: {
-      type: Function,
-      default: noop,
+      type: Function as PropType<AjaxEventListener>,
+      default: () => NOOP as AjaxEventListener,
     },
     beforeUpload: {
-      type: Function,
-      default: noop,
+      type: Function as PropType<(file: File) => Promise<File | Blob> | boolean | unknown>,
+      default: () => NOOP as (file: File) => void,
     },
-    drag: Boolean,
+    drag: {
+      type: Boolean,
+      default: false,
+    },
     onPreview: {
-      type: Function,
-      default: noop,
+      type: Function as PropType<IFileHanlder>,
+      default: () => NOOP as IFileHanlder,
     },
     onRemove: {
-      type: Function,
-      default: noop,
+      type: Function as PropType<(file: Nullable<FileList>, rawFile: ElFile) => void>,
+      default: () => NOOP as (file: Nullable<FileList>, rawFile: ElFile) => void,
     },
     fileList: {
-      type: Array as PropType<File[]>,
-      default: [],
+      type: Array as PropType<UploadFile[]>,
+      default: [] as UploadFile[],
     },
     autoUpload: {
       type: Boolean,
       default: true,
     },
     listType: {
-      type: String,
-      default: '',
+      type: String as PropType<ListType>,
+      default: 'text',
     },
     httpRequest: {
-      type: Function,
-      default: ajax,
+      type: Function as PropType<typeof ajax> | PropType<(...args: unknown[]) => Promise<unknown>>,
+      default: () => ajax,
     },
     disabled: Boolean,
     limit: {
@@ -120,47 +131,37 @@ export default defineComponent({
       default: null,
     },
     onExceed: {
-      type: Function,
-      default: noop,
+      type: Function as PropType<(files: FileList, fileList: UploadFile[]) => void>,
+      default: () => NOOP as (files: FileList, fileList: UploadFile[]) => void,
     },
   },
-  setup() {
-    const uploader = inject('uploader', {})
-    return {
-      reqs: ref({}),
-      mouseover: ref(false),
-      uploader,
-    }
-  },
-  methods: {
-    isImage(str) {
-      return str.indexOf('image') !== -1
-    },
-    handleChange(ev) {
-      const files = ev.target.files
-      if (!files) return
-      this.uploadFiles(files)
-    },
-    uploadFiles(files) {
-      if (this.limit && this.fileList.length + files.length > this.limit) {
-        this.onExceed && this.onExceed(files, this.fileList)
+  setup(props) {
+    const uploader = inject('uploader', {}) as ElUpload
+    const reqs = ref({} as Indexable<XMLHttpRequest | Promise<unknown>>)
+    const mouseover = ref(false)
+    const inputRef = ref(null as Nullable<HTMLInputElement>)
+
+    function uploadFiles(files: FileList) {
+      if (props.limit && props.fileList.length + files.length > props.limit) {
+        props.onExceed(files, props.fileList)
         return
       }
-      let postFiles = Array.prototype.slice.call(files)
-      if (!this.multiple) { postFiles = postFiles.slice(0, 1) }
+      let postFiles = Array.from(files)
+      if (!props.multiple) { postFiles = postFiles.slice(0, 1) }
       if (postFiles.length === 0) { return }
       postFiles.forEach(rawFile => {
-        this.onStart(rawFile)
-        if (this.autoUpload) this.upload(rawFile)
+        props.onStart(rawFile)
+        if (props.autoUpload) upload(rawFile as ElFile)
       })
-    },
-    upload(rawFile) {
-      this.$refs.input.value = null
-      if (!this.beforeUpload) {
-        return this.post(rawFile)
+    }
+
+    function upload(rawFile: ElFile) {
+      inputRef.value.value = null
+      if (!props.beforeUpload) {
+        return post(rawFile)
       }
-      const before = this.beforeUpload(rawFile)
-      if (before && before.then) {
+      const before = props.beforeUpload(rawFile)
+      if (before instanceof Promise) {
         before.then(processedFile => {
           const fileType = Object.prototype.toString.call(processedFile)
           if (fileType === '[object File]' || fileType === '[object Blob]') {
@@ -174,73 +175,95 @@ export default defineComponent({
                 processedFile[p] = rawFile[p]
               }
             }
-            this.post(processedFile)
+            post(processedFile)
           } else {
-            this.post(rawFile)
+            post(rawFile)
           }
-        }, () => {
-          this.onRemove(null, rawFile)
+        }).catch(() => {
+          props.onRemove(null, rawFile)
         })
       } else if (before !== false) {
-        this.post(rawFile)
+        post(rawFile)
       } else {
-        this.onRemove(null, rawFile)
+        props.onRemove(null, rawFile)
       }
-    },
-    abort(file) {
-      const { reqs } = this
+    }
+    function abort(file) {
+      const _reqs = reqs.value
       if (file) {
         let uid = file
         if (file.uid) uid = file.uid
-        if (reqs[uid]) {
-          reqs[uid].abort()
+        if (_reqs[uid]) {
+          (_reqs[uid] as XMLHttpRequest).abort()
         }
       } else {
-        Object.keys(reqs).forEach((uid) => {
-          if (reqs[uid]) reqs[uid].abort()
-          delete reqs[uid]
+        Object.keys(_reqs).forEach((uid) => {
+          if (_reqs[uid]) (_reqs[uid] as XMLHttpRequest).abort()
+          delete _reqs[uid]
         })
       }
-    },
-    post(rawFile) {
+    }
+
+    function post(rawFile: ElFile) {
       const { uid } = rawFile
       const options = {
-        headers: this.headers,
-        withCredentials: this.withCredentials,
+        headers: props.headers,
+        withCredentials: props.withCredentials,
         file: rawFile,
-        data: this.data,
-        filename: this.name,
-        action: this.action,
+        data: props.data,
+        filename: props.name,
+        action: props.action,
         onProgress: e => {
-          this.onProgress(e, rawFile)
+          props.onProgress(e, rawFile)
         },
         onSuccess: res => {
-          this.onSuccess(res, rawFile)
-          delete this.reqs[uid]
+          props.onSuccess(res, rawFile)
+          delete reqs.value[uid]
         },
         onError: err => {
-          this.onError(err, rawFile)
-          delete this.reqs[uid]
+          props.onError(err, rawFile)
+          delete reqs.value[uid]
         },
       }
-      const req = this.httpRequest(options)
-      this.reqs[uid] = req
-      if (req && req.then) {
+      const req = props.httpRequest(options)
+      reqs.value[uid] = req
+      if (req instanceof Promise) {
         req.then(options.onSuccess, options.onError)
       }
-    },
-    handleClick() {
-      if (!this.disabled) {
-        this.$refs.input.value = null
-        this.$refs.input.click()
+    }
+
+    function handleChange(e: DragEvent){
+      const files = (e.target as HTMLInputElement).files
+      if (!files) return
+      uploadFiles(files)
+    }
+
+    function handleClick() {
+      if (!props.disabled) {
+        inputRef.value.value = null
+        inputRef.value.click()
       }
-    },
-    handleKeydown(e) {
+    }
+
+    function handleKeydown(e: KeyboardEvent) {
       if (e.target !== e.currentTarget) return
-      if (e.keyCode === 13 || e.keyCode === 32) {
-        this.handleClick()
+      if (e.keyCode === eventKeys.enter || e.keyCode === eventKeys.space) {
+        handleClick()
       }
-    },
+    }
+
+    return {
+      reqs,
+      mouseover,
+      inputRef,
+      abort,
+      post,
+      handleChange,
+      handleClick,
+      handleKeydown,
+      upload,
+      uploadFiles,
+    }
   },
 })
 </script>

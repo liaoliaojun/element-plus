@@ -1,12 +1,12 @@
 <template>
   <div
-    class="el-upload-dragger"
     :class="{
-      'is-dragover': dragover
+      'el-upload-dragger': true,
+      'is-dragover': dragOver
     }"
     @drop.prevent="onDrop"
-    @dragover.prevent="onDragover"
-    @dragleave.prevent="dragover = false"
+    @dragOver.prevent="onDragOver"
+    @dragleave.prevent="dragOver = false"
   >
     <slot></slot>
   </div>
@@ -14,37 +14,33 @@
 <script lang="ts">
 import { defineComponent, ref, inject } from 'vue'
 
-import type { PropType } from 'vue'
+import type { ElUpload } from './upload'
 
 export default defineComponent({
   name: 'ElUploadDrag',
   props: {
-    disabled: Boolean,
+    disabled: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ['file'],
-  setup() {
-    const uploader = inject('uploader', {})
-    const dragover = ref(false)
+  setup(props, { emit }) {
+    const uploader = inject('uploader', {} as ElUpload)
+    const dragOver = ref(false)
+    function onDragOver() {
+      if(!dragOver.value) dragOver.value = true
+    }
 
-    function onDragover() {
-      if(!dragover.value) dragover.value = true
-    }
-    return {
-      dragover: ref(false),
-      onDragover,
-      uploader,
-    }
-  },
-  methods: {
-    onDrop(e: DragEvent) {
-      if (this.disabled || !this.uploader) return
-      const accept = this.uploader.accept
-      this.dragover = false
+    function onDrop(e: DragEvent) {
+      if (props.disabled || !uploader) return
+      const accept = uploader.accept
+      dragOver.value = false
       if (!accept) {
-        this.$emit('file', e.dataTransfer.files)
+        emit('file', e.dataTransfer.files)
         return
       }
-      this.$emit('file', [].slice.call(e.dataTransfer.files).filter(file => {
+      emit('file', Array.from(e.dataTransfer.files).filter(file => {
         const { type, name } = file
         const extension = name.indexOf('.') > -1
           ? `.${ name.split('.').pop() }`
@@ -54,7 +50,7 @@ export default defineComponent({
           .map(type => type.trim())
           .filter(type => type)
           .some(acceptedType => {
-            if (/\..+$/.test(acceptedType)) {
+            if (acceptedType.startsWith('.')) {
               return extension === acceptedType
             }
             if (/\/\*$/.test(acceptedType)) {
@@ -66,7 +62,12 @@ export default defineComponent({
             return false
           })
       }))
-    },
+    }
+    return {
+      dragOver,
+      onDragOver,
+      onDrop,
+    }
   },
 })
 </script>

@@ -17,6 +17,7 @@ import ElSwitch from '@element-plus/switch'
 import ElContainer from '@element-plus/container'
 import ElNotification from '@element-plus/notification'
 import ElPageHeader from '@element-plus/page-header'
+import ElUpload from '@element-plus/upload'
 
 export {
   ElAvatar,
@@ -37,6 +38,7 @@ export {
   ElContainer,
   ElNotification,
   ElPageHeader,
+  ElUpload,
 }
 
 export default function install(app: App): void {
@@ -58,4 +60,5 @@ export default function install(app: App): void {
   ElContainer(app)
   ElNotification(app)
   ElPageHeader(app)
+  ElUpload(app)
 }

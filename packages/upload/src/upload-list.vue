@@ -13,10 +13,10 @@
       :key="file.uid"
       :class="['el-upload-list__item', 'is-' + file.status, focusing ? 'focusing' : '']"
       tabindex="0"
-      @keydown.delete="!disabled && $emit('remove', file)"
+      @keydown.delete="!disabled && handleRemove($event, file)"
       @focus="focusing = true"
       @blur="focusing = false"
-      @click="focusing = false"
+      @click="onFileClicked"
     >
       <slot :file="file">
         <img
@@ -37,7 +37,7 @@
             }"
           ></i>
         </label>
-        <i v-if="!disabled" class="el-icon-close" @click="$emit('remove', file)"></i>
+        <i v-if="!disabled" class="el-icon-close" @click="handleRemove($event, file)"></i>
         <!-- Due to close btn only appears when li gets focused disappears after li gets blurred, thus keyboard navigation can never reach close btn-->
         <!-- This is a bug which needs to be fixed -->
         <!-- TODO: Fix the incorrect navigation interaction -->
@@ -59,7 +59,7 @@
           <span
             v-if="!disabled"
             class="el-upload-list__item-delete"
-            @click="$emit('remove', file)"
+            @click="handleRemove($event, file)"
           >
             <i class="el-icon-delete"></i>
           </span>
@@ -70,10 +70,10 @@
 </template>
 <script lang="ts">
 import { defineComponent, ref } from 'vue'
-import { noop } from 'lodash-es'
+import { NOOP } from '@vue/shared'
 
 import { t } from '@element-plus/locale'
-import ElProgress from '@element-plus/progress'
+import { ElProgress } from '@element-plus/progress'
 
 import type { PropType } from 'vue'
 
@@ -83,9 +83,7 @@ export default defineComponent({
   props: {
     files: {
       type: Array as PropType<File[]>,
-      default() {
-        return []
-      },
+      default: () => [] as File[],
     },
     disabled: {
       type: Boolean,
@@ -93,7 +91,7 @@ export default defineComponent({
     },
     handlePreview: {
       type: Function as PropType<(file: File) => void>,
-      default: noop,
+      default: () => NOOP,
     },
     listType: {
       type: String as PropType<'picture' | 'picture-card' | 'text'>,
@@ -101,19 +99,28 @@ export default defineComponent({
     },
   },
   emits: ['remove'],
-  setup(props) {
+  setup(props, { emit }) {
     const parsePercentage = (val: string) => {
       return parseInt(val, 10)
     }
 
     const handleClick = (file: File) => {
-      props?.handlePreview(file)
+      props.handlePreview(file)
     }
 
+    const onFileClicked = (e: Event) => {
+      (e.target as HTMLElement).focus()
+    }
+
+    const handleRemove = (e: Event, file: File) => {
+      emit('remove', file)
+    }
     return {
       focusing: ref(false),
       parsePercentage,
       handleClick,
+      handleRemove,
+      onFileClicked,
       t,
     }
   },
