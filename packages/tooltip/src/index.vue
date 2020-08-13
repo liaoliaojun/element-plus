@@ -1,20 +1,39 @@
 <template>
-  <div>
-    <slot></slot>
-  </div>
+  <slot></slot>
+  <el-popper :referrer="referrer" :placement="placement">
+    <slot name="content">
+      {{ content }}
+    </slot>
+  </el-popper>
 </template>
 <script lang='ts'>
-import { defineComponent, h, toRefs, ref, reactive } from 'vue'
+import { defineComponent, ref } from 'vue'
 import type { PropType } from 'vue'
-import usePopper from '@element-plus/popper'
+import { Placement, Options } from '@popperjs/core'
+
+import ElPopper from '@element-plus/popper'
 import isServer from '@element-plus/utils/isServer'
-import { addClass, removeClass, on, off } from '@element-plus/utils/dom'
-import { generateId } from '@element-plus/utils/util'
-import { debounce } from 'lodash-es'
 
 export default defineComponent({
   name: 'ElTooltip',
+  components: {
+    ElPopper,
+  },
   props: {
+    arrowOffset: {
+      type: Number,
+      default: 15,
+    },
+    // indicates should the popover gets cut off from it's boundary
+    // true the popper would be partially unseenable if there weren't sufficient space 
+    cutoff: {
+      type: Boolean,
+      default: false,
+    },
+    flip: {
+      type: Boolean,
+      default: true,
+    },
     openDelay: {
       type: Number,
       default: 0,
@@ -30,10 +49,6 @@ export default defineComponent({
     effect: {
       type: String,
       default: 'dark',
-    },
-    arrowOffset: {
-      type: Number,
-      default: 0,
     },
     popperClass: {
       type: String,
@@ -52,13 +67,8 @@ export default defineComponent({
       default: 'el-fade-in-linear',
     },
     popperOptions: {
-      type: Object,
-      default() {
-        return {
-          boundariesPadding: 10,
-          gpuAcceleration: false,
-        }
-      },
+      type: Object as PropType<Partial<Options>>,
+      default: () => null,
     },
     enterable: {
       type: Boolean,
@@ -72,29 +82,27 @@ export default defineComponent({
       type: Number,
       default: 0,
     },
-    transformOrigin: {
-      type: [Boolean, String],
-      default: true,
-    },
     placement: {
-      type: String,
-      default: 'bottom',
+      type: String as PropType<Placement>,
+      default: 'bottom' as Placement,
+      validator: (val: Placement) => {
+        return /^(top|bottom|left|right)(-start|-end)?$/g.test(val)
+      },
     },
+    // indicates how should the popper over flow it's boundary
+    /**
+     * +-------------------------+
+     * |                         |
+     * |        Boundary         | ******|<-- boundray padding | popper
+     * +------------------------ + ******|                     |
+     */
     boundariesPadding: {
       type: Number,
-      default: 5,
-    },
-    reference: {
-      type: Object as PropType<Nullable<HTMLElement>>,
-      default: () => null,
-    },
-    popper: {
-      type: Object as PropType<Nullable<HTMLElement>>,
-      default: () => null,
+      default: 0,
     },
     offset: {
       type: Number,
-      default: 0,
+      default: 12,
     },
     value: {
       type: Boolean,
@@ -102,34 +110,61 @@ export default defineComponent({
     },
     appendToBody: {
       type: Boolean,
-      default: true,
+      default: false,
     },
   },
   setup(props, ctx) {
     if (isServer) return null
-
-    // this.popperVM = new Vue({
-    //   data: function() {
-    //     return { node: '' }
-    //   },
-    //   render(h) {
-    //     return this.node
-    //   },
-    // }).$mount()
-    const popper = usePopper(props, ctx)
+    // const popper = usePopper(props, ctx)
+    return {
+      referrer: ref(null),
+    }
     // init here
-    return toRefs(
-      reactive({
-        expectedState: false,
-        focusing: false,
-        timeoutPending: null,
-        timeout: null,
-        tooltipId: `el-tooltip-${generateId()}`,
-      }),
-    )
   },
   mounted() {
-    console.log(this.referenceElm)
+    // console.log(this.showPopper)
+    // this.showPopper = true
+    this.referrer = this.$el.nextElementSibling
+    // if (this.referenceRef) {
+    //   this.referenceRef.setAttribute('aria-describedby', this.tooltipId)
+    //   this.referenceRef.setAttribute('tabindex', this.tabindex)
+    //   on(this.referenceRef, 'mouseenter', this.show)
+    //   on(this.referenceRef, 'mouseleave', this.hide)
+    //   on(this.referenceRef, 'focus', () => {
+    //     // console.log(defaultSlots[0])
+    //     const defaultSlots = this.$slots.default()
+    //     console.log(defaultSlots)
+
+    //     if (!defaultSlots || defaultSlots.length === 0) {
+    //       this.handleFocus()
+    //       return
+    //     }
+    //     const instance = defaultSlots[0].componentInstance
+    //     if (instance && instance.focus) {
+    //       instance.focus()
+    //     } else {
+    //       this.handleFocus()
+    //     }
+    //   })
+    //   on(this.referenceRef, 'blur', this.handleBlur)
+    //   on(this.referenceRef, 'click', this.removeFocusing)
+    // }
+    // // fix issue https://github.com/ElemeFE/element/issues/14424
+    // if (this.value) {
+    //   nextTick(() => {
+    //     if (this.value) {
+    //       this.updatePopper()
+    //     }
+    //   })
+    // }
+    // this.debounceClose = debounce(
+    //   () => {
+    //     this.handleClosePopper()
+    //   },
+    //   200)
+  },
+  deactivated() {
+    this.beforeDestroy()
   },
   methods: {
     show() {
@@ -195,20 +230,13 @@ export default defineComponent({
       }
       this.expectedState = expectedState
     },
-
-    getFirstElement() {
-      const slots = this.$slots.default
-      if (!Array.isArray(slots)) return null
-      let element = null
-      for (let index = 0; index < slots.length; index++) {
-        if (slots[index] && slots[index].tag) {
-          element = slots[index]
-        }
-      }
-      return element
+    onMouseEnter() {
+      this.setExpectedState(true)
+    },
+    onMouseLeave() {
+      this.setExpectedState(false)
+      this.debounceClose()
     },
   },
 })
 </script>
-<style scoped>
-</style>

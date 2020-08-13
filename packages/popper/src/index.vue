@@ -1,32 +1,399 @@
 <template>
-  <div>
-    <slot></slot>
-  </div>
+  <transition :name="transition" @afterleave="doDestroy">
+    <div
+      v-show="visible"
+      :id="tooltipId"
+      ref="popperRef"
+      role="tooltip"
+      :aria-hidden="visible ? 'false' : 'true'"
+      :class="['el-tooltip__popper', 'is-' + effect, popperClass]"
+      @mouseenter="_show"
+      @mouseleave="_hide"
+    >
+      <!-- mark this parent container un-indexable to disable it from being indexed -->
+      <slot>
+        <div>{{ content }}</div>
+      </slot>
+
+      <div
+        v-if="showArrow"
+        ref="arrowRef"
+        class="el-tooltip__arrow"
+        data-popper-arrow
+      ></div>
+    </div>
+  </transition>
 </template>
+
 <script lang="ts">
-import { defineComponent, nextTick, reactive, ref, watch } from 'vue'
-import type { PropType } from 'vue'
+import {
+  computed,
+  defineComponent,
+  ref,
+  onBeforeUnmount,
+  onUnmounted,
+  nextTick,
+  watch,
+} from 'vue'
+import { isArray } from '@vue/shared'
+import { debounce } from 'lodash-es'
+import { createPopper } from '@popperjs/core'
 
-import * as PopperJS from '@popperjs/core'
-import isServer from '@element-plus/utils/isServer'
+import { generateId } from '@element-plus/utils/util'
 import { on, off } from '@element-plus/utils/dom'
-import PopupManager from '@element-plus/utils/popup-manager'
 
-const stop = (e: Event) => e.stopPropagation()
+import useModifer from './useModifier'
+import { ComponentPublicInstance, PropType, Ref } from 'vue'
+import type { Placement, Instance as PopperInstance, PositioningStrategy } from '@popperjs/core'
+
+type Effect = 'dark' | 'light'
 
 export default defineComponent({
   name: 'ElPopper',
   props: {
-
+    arrowOffset: {
+      type: Number,
+      default: 15,
+    },
+    appendToBody: {
+      type: Boolean,
+      default: true,
+    },
+    boundariesPadding: {
+      type: Number,
+      default: 0,
+    },
+    content: {
+      type: String,
+      default: '',
+    },
+    closeDelay: {
+      type: Number,
+      default: 200,
+    },
+    cutoff: {
+      type: Boolean,
+      default: false,
+    },
+    disabled: {
+      type: Boolean,
+      defualt: false,
+    },
+    effect: {
+      type: String as PropType<Effect>,
+      default: 'dark' as Effect,
+    },
+    enterable: {
+      type: Boolean,
+      default: true,
+    },
+    flip: {
+      type: Boolean,
+      default: true,
+    },
+    hideAfter: {
+      type: Number,
+      default: 0,
+    },
+    manualMode: {
+      type: Boolean,
+      default: false,
+    },
+    openDelay: {
+      type: Number,
+      default: 0,
+    },
+    offset: {
+      type: [Number, Array] as PropType<[number, number] | number>,
+      default: [0, 12] as [number, number],
+      validator: (val: [number, number] | number): boolean => {
+        return isArray(val) && val.length === 2 || typeof val === 'number'
+      },
+    },
+    placement: {
+      type: String as PropType<Placement>,
+      default: 'bottom' as Placement,
+    },
+    popperClass: {
+      type: String,
+      default: '',
+    },
+    referrer: {
+      type: HTMLElement as PropType<Nullable<HTMLElement>>,
+      default: null as Nullable<HTMLElement>,
+    },
+    showArrow: {
+      type: Boolean,
+      default: true,
+    },
+    strategy: {
+      type: String as PropType<PositioningStrategy>,
+      default: 'fixed' as PositioningStrategy,
+    },
+    transition: {
+      type: String,
+      default: 'el-fade-in-linear',
+    },
+    tabIndex: {
+      type: String,
+      default: '0',
+    },
+    value: {
+      type: Boolean,
+      default: true,
+    },
   },
-  emits: ['input', 'created'],
-  setup(props, { emit, slots }) {
-    // init here
+  setup(props) {
+    const popperRef = ref(null as Nullable<HTMLElement>)
+    const arrowRef = ref(null as Nullable<HTMLElement>)
+    const popperInstance = ref(null as PopperInstance)
+    const exceptionState = ref(false)
+    const timeout = ref(null as NodeJS.Timeout)
+    const timeoutPending = ref(null as NodeJS.Timeout)
+    const show = ref(false)
+    const visible = computed(() => {
+      return props.manualMode ? props.value : !props.disabled && show.value
+    })
 
+    const tooltipId = ref(`el-tooltip-${generateId()}`)
+    // this is a reference that we need to pass down to child component
+    // to obtain the child instance
+    function doDestroy(forceDestroy: boolean) {
+    /* istanbul ignore if */
+      if (!popperInstance.value || (visible.value && !forceDestroy)) return
+      popperInstance.value.destroy()
+      popperInstance.value = null
+      if (popperRef.value && props.appendToBody) {
+        off(popperRef.value, 'click', stop)
+        document.body.removeChild(popperRef.value)
+      }
+    }
+
+    const showPopper = () => {
+      if (!exceptionState.value || props.manualMode) return
+      clearTimeout(timeout.value)
+      timeout.value = setTimeout(() => {
+        show.value = true
+      }, props.openDelay)
+
+      if (props.hideAfter > 0) {
+        timeoutPending.value = setTimeout(() => {
+          show.value = false
+        }, props.hideAfter)
+      }
+    }
+
+    const closePopper = () => {
+      if (props.enterable && exceptionState.value) return
+      clearTimeout(timeout.value)
+
+      if (timeoutPending.value !== null) {
+        clearTimeout(timeoutPending.value)
+      }
+      show.value = false
+      if (props.disabled) {
+        doDestroy(true)
+      }
+    }
+
+    const debouncedClose = debounce(() => {
+      closePopper()
+    }, props.closeDelay)
+
+    function setExpectionState(state: boolean) {
+      if (!state) {
+        clearTimeout(timeoutPending.value)
+      }
+      exceptionState.value = state
+    }
+    function _show() {
+      setExpectionState(true)
+      showPopper()
+    }
+
+    function _hide() {
+      setExpectionState(false)
+      debouncedClose()
+    }
+
+    function handleBlur() {
+      _hide()
+    }
+
+    function handleFocus() {
+      _show()
+    }
+
+    function initializePopper() {
+      const modifiers = useModifer({
+        arrowOffset: props.arrowOffset,
+        arrowRef: arrowRef.value,
+        boundariesPadding: props.boundariesPadding,
+        cutoff: props.cutoff,
+        offset: props.offset,
+        showArrow: props.showArrow,
+        fallbackOptions: props.flip ? {} : { fallbackPlacements: [] },
+      })
+      const referenceElement = props.referrer
+
+      popperInstance.value = createPopper(
+        referenceElement,
+        popperRef.value,
+        {
+          placement: props.placement,
+          onFirstUpdate: () => {
+            // nextTick(() => {
+            popperInstance.value.forceUpdate()
+            // })
+          },
+          strategy: props.strategy,
+          modifiers,
+        })
+      referenceElement.setAttribute('aria-describedby', tooltipId.value)
+      referenceElement.setAttribute('tabindex', props.tabIndex)
+      on(referenceElement, 'mouseenter', _show)
+      on(referenceElement, 'mouseleave', _hide)
+      on(referenceElement, 'focus', () => {
+        handleFocus()
+        // if (childInstance.value !== null) {
+        //   childInstance.value.focus()
+        // } else {
+        //   handleFocus()
+        // }
+      })
+      on(referenceElement, 'blur', handleBlur)
+    }
+
+    watch(() => props.referrer, (val) => {
+      if (val !== null && popperInstance.value === null) {
+        if (popperInstance.value === null) {
+          initializePopper()
+        } else {
+          popperInstance.value.update()
+        }
+      }
+    })
+
+    watch(() => visible.value, () => {
+      if (popperInstance.value !== null) {
+        popperInstance.value.update()
+      } else {
+        initializePopper()
+      }
+    })
+
+    onBeforeUnmount(() => {
+      doDestroy(true)
+    })
+
+    onUnmounted(() => {
+      const referrer = props.referrer
+      off(referrer, 'mouseenter', _show)
+      off(referrer, 'mouseleave', _hide)
+      off(referrer, 'focus', handleFocus)
+      off(referrer, 'blur', handleBlur)
+    })
+
+    return {
+      arrowRef,
+      tooltipId,
+      doDestroy,
+      _show,
+      _hide,
+      popperRef,
+      popperInstance,
+      visible,
+    }
   },
-  deactivated() {
-    this.$options.beforeDestroy[0].call(this)
+  mounted() {
+    if (this.appendToBody) {
+      document.body.appendChild(this.$el)
+    }
+  },
+  ondeactivated() {
+    this.doDestroy()
   },
 })
+
 </script>
-<style scoped></style>
+
+<style>
+
+.el-tooltip__popper {
+  position:absolute;
+  border-radius:4px;
+  padding:10px;
+  z-index:2000;
+  font-size:12px;
+  line-height:1.2;
+  min-width:10px;
+  word-wrap:break-word;
+}
+
+.el-tooltip__arrow, .el-tooltip__arrow::before {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  z-index: -1;
+}
+
+.el-tooltip__arrow::before {
+  content: ' ';
+  transform: rotate(45deg);
+  background: #303133;
+  box-sizing: border-box;
+}
+
+.el-tooltip__popper[data-popper-placement^=top] > .el-tooltip__arrow {
+  bottom: -4px;
+}
+
+.el-tooltip__popper[data-popper-placement^=bottom] > .el-tooltip__arrow {
+  top: -4px;
+}
+
+.el-tooltip__popper[data-popper-placement^=left] > .el-tooltip__arrow {
+  right: -4px;
+}
+
+.el-tooltip__popper[data-popper-placement^=right] > .el-tooltip__arrow {
+  left: -4px;
+}
+
+.el-tooltip__popper.is-dark {
+  background:#303133;
+  color:#FFF;
+}
+.el-tooltip__popper.is-light {
+  background:#FFF;border:1px solid #303133;
+}
+
+.el-tooltip__popper.is-dark .el-tooltip__arrow::before {
+  background: #303133;
+}
+
+.el-tooltip__popper.is-light .el-tooltip__arrow::before {
+  background: #FFF;
+  border: 1px solid #303133;
+}
+
+.el-tooltip__popper.is-light[data-popper-placement^=top] .el-tooltip__arrow::before {
+  border-top: none;
+  border-left: none;
+}
+
+.el-tooltip__popper.is-light[data-popper-placement^=bottom] .el-tooltip__arrow::before {
+  border-top: none;
+  border-left: none;
+}
+
+.el-tooltip__popper.is-light[data-popper-placement^=left] .el-tooltip__arrow::before {
+  border-left: none;
+  border-bottom: none;
+}
+
+.el-tooltip__popper.is-light[data-popper-placement^=right] .el-tooltip__arrow::before {
+  border-top: none;
+  border-right: none;
+}
+</style>
