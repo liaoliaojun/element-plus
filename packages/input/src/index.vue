@@ -106,7 +106,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, reactive, computed, toRefs } from 'vue'
+import { defineComponent, ref, reactive, computed, toRefs, watch, nextTick } from 'vue'
 // import throttle from 'lodash/throttle'
 // import { on, off } from '@element-plus/utils/dom'
 // import { easeInOutCubic } from '@element-plus/utils/animation'
@@ -203,8 +203,16 @@ export default defineComponent({
       const maxRows = autosize.maxRows
       state.textareaCalcStyle = calcTextareaHeight(textareaEle.value, minRows, maxRows)
     }
-
     console.log(vm)
+
+    watch(props.value, () => {
+      nextTick(() => {
+        resizeTextarea()
+      })
+      // if (props.validateEvent) {
+      //   this.dispatch('ElFormItem', 'el.form.change', [val]);
+      // }
+    })
 
     return {
       ...toRefs(state),
